@@ -1,5 +1,5 @@
 const plist = require('simple-plist')
-const DecompressZip = require('decompress-zip')
+const StreamZip = require('node-stream-zip')
 const config = require('../config')
 const fs = require('fs-extra')
 const path = require('path')
@@ -54,10 +54,26 @@ const list = (publicURL) => {
 }
 
 const decompress = (opt) => new Promise((resolve, reject) => {
-  const unzipper = new DecompressZip(opt.file)
-  unzipper.on('error', reject)
-  unzipper.on('extract', resolve)
-  unzipper.extract(opt)
+  const zip = new StreamZip({
+    file: opt.file,  
+    storeEntries: true    
+  })
+  zip.on('error', reject)
+  zip.on('extract', function(entry, file) {
+    opt.filter(entry.name)
+    
+  })
+  zip.on('ready', function() {
+    fs.mkdirsSync(opt.path)
+    zip.extract(null, opt.path, function(err, count) {
+      if (err) {
+        console.log(err)
+        reject()
+      }
+      console.log('Extracted ' + count + ' entries');
+      resolve()
+    })
+  })
 })
 
 const fixPNG = (input, output) => new Promise((resolve, reject) => {
@@ -66,7 +82,7 @@ const fixPNG = (input, output) => new Promise((resolve, reject) => {
 
 const add = async (file) => {
 
-  const tmpDir = '/tmp/cn.ineva.upload/unzip-tmp' // temp dir
+  const tmpDir = '/tmp/ipa.server.upload/unzip-tmp' // temp dir
   let plistFile, iconFiles = []
 
   // unzip files
@@ -77,12 +93,12 @@ const add = async (file) => {
     file: file,
     path: tmpDir,
     filter: (file) => {
-      if (file.path.endsWith('.app/Info.plist')) {
+      if (file.endsWith('.app/Info.plist')) {
         plistFile = file
         return true
       } else if (
-        file.path.match(newIconRegular) ||
-        file.path.match(oldIconRegular)
+        file.match(newIconRegular) ||
+        file.match(oldIconRegular)
       ) {
         iconFiles.push(file)
         return true
@@ -96,9 +112,9 @@ const add = async (file) => {
   let iconFile, maxSize = 0
   iconFiles.forEach(file => {
     let size = 0
-    if (file.path.match(oldIconRegular)) {
+    if (file.match(oldIconRegular)) {
       // parse old icons
-      const arr = path.basename(file.path, '.png').split('-')
+      const arr = path.basename(file, '.png').split('-')
       if (arr.length === 2) {
         size = Number(arr[1])
       } else {
@@ -106,10 +122,10 @@ const add = async (file) => {
       }
     } else {
       // parse new icons
-      size = Number(path.basename(file.path, '.png').split('@')[0].split('x')[1].split('~')[0])
-      if (file.path.indexOf('@2x') !== -1) {
+      size = Number(path.basename(file, '.png').split('@')[0].split('x')[1].split('~')[0])
+      if (file.indexOf('@2x') !== -1) {
         size *= 2
-      } else if (file.path.indexOf('@3x') !== -1) {
+      } else if (file.indexOf('@3x') !== -1) {
         size *= 3
       }
     }
@@ -120,7 +136,7 @@ const add = async (file) => {
   })
 
   // parse plist
-  const info = plist.readFileSync(path.join(tmpDir, plistFile.path))
+  const info = plist.readFileSync(path.join(tmpDir, plistFile))
   const app = {
     id: path.basename(file, '.ipa'),
     name: info['CFBundleDisplayName'] || info['CFBundleName'] || info['CFBundleExecutable'],
@@ -140,9 +156,9 @@ const add = async (file) => {
   await fs.move(file, path.join(targetDir, 'ipa.ipa'))
   if (iconFile) {
     try {
-      await fixPNG(path.join(tmpDir, iconFile.path), path.join(targetDir, 'icon.png'))
+      await fixPNG(path.join(tmpDir, iconFile), path.join(targetDir, 'icon.png'))
     } catch (err) {
-      await fs.move(path.join(tmpDir, iconFile.path), path.join(targetDir, 'icon.png'))
+      await fs.move(path.join(tmpDir, iconFile), path.join(targetDir, 'icon.png'))
     }
   }
 

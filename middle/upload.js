@@ -29,7 +29,7 @@ const saveStream = (stream, pathName)=>{
 }
 
 module.exports = (opt = {}, next) => {
-  opt.tempDir = opt.tempDir || '/tmp/cn.ineva.upload' // default temp dir
+  opt.tempDir = opt.tempDir || '/tmp/ipa.server.upload' // default temp dir
   opt.defExt = opt.defExt || 'jpg' // default ext
   return async (ctx) => {
     const files = []
